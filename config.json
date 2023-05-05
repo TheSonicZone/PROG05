@@ -1,0 +1,4 @@
+{
+	"port": "COM3",
+    "targetclock": "4MHz"
+}
