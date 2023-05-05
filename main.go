@@ -206,6 +206,8 @@ func main() {
 	err = json.Unmarshal(content, &workingset)
 	if err != nil {
 		fmt.Println("Configuration file contains invalid data: ", err)
+		fmt.Println("Program will now quit!")
+		os.Exit(0)
 	}
 	var tstr string
 	tstr = "Configuration Loaded- Port " + workingset.Port + " is assigned"
