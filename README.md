@@ -14,6 +14,7 @@ Note this project is under development, not all features are available yet!
 ## Development and Building
 
 PROG05 is developed using JetBrains GoLand with the latest Go runtime installed. Currently this is 1.19.3
+
 It is built by simply using ```go build main.go``` on the command line in the root directory of the project.
 
 ## Dependencies
@@ -32,6 +33,7 @@ A typical view of the configuration file is shown for reference:
 }
 ```
 ```port``` - specifies which serial port to use (Windows: COMx, Linux: /dev/ttyUSBx, macOS: /dev/tty.<hardware-specific-name>)
+	
 ```targetclock``` - specifies the frequency in use to clock the MCU. The original Motorola board uses a 2MHz clock. Similarly the MIDON board also uses a 2MHz clock. A 4MHz clock may also be used for faster programming. Always check the crystal/resonator frequency fitted to your board in case of doubt!
 
 ## Microcontroller Documentation
