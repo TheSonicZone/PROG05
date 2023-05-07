@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/matishsiao/goInfo"
@@ -50,6 +51,8 @@ var RAM_PROGRAM_START uint16 = 0
 
 var userinput string
 var errtype error
+var addr_hi uint8
+var addr_lo uint8
 
 //-------------------------------------------------------------------------------------------------------------------
 // Utility Functions
@@ -224,6 +227,7 @@ func main() {
 	fmt.Println(" * DEMO    - Load simple demonstration program into HC05 that toggles PORT A pins (use this to confirm your MCU is OK)")
 	fmt.Println(" * LOADRAM - Load user application into HC05 RAM and execute (specify a .S19 file)")
 	fmt.Println(" * LOAD    - Load user application into memory for EPROM programming")
+	fmt.Println(" * READ    - Read memory location")
 	fmt.Println(" * QUIT    - Quit this program ")
 
 	//--------------------------------------------------------------------------------------
@@ -237,6 +241,118 @@ func main() {
 		userinput, errtype = reader.ReadString('\n')
 
 		switch userinput {
+
+		case "READ\r\n":
+			//------------------------------------------------------------------
+			// READ command
+			//-----------------------------------------------------------------
+			if strings.Contains(userinput, "READ") {
+				// First we load an applet to the HC05 to access the memory map
+				pwd, _ := os.Getwd()
+				res := LoadSrec(pwd+"/srec/memread.s19", RAM_0050, &RAM_SIZE_LOADED)
+				if res != 0 {
+					goto CmdInput
+				}
+				fmt.Println("HC05 memory read mode")
+				fmt.Println("Please enable loader either by: ")
+				fmt.Println("  * MC68HC05PGMR: S3-S5 = OFF, S6 = ON, shunt across Pin 1 & 2 of J1")
+				fmt.Println("  * MIDON PROG05: shunt across pins 1 & 2 of J1")
+				fmt.Println("Then, release reset by:")
+				fmt.Println("  * MC68HC05PGMR: switch S2 from RESET -> OUT")
+				fmt.Println("  * MIDON PROG05: Press and release SW1")
+				fmt.Println("  **** PRESS ENTER WHEN READY ***")
+				anykey, _ := reader.ReadByte()
+				if anykey > 0 {
+					length = byte(RAM_SIZE_LOADED)
+					length++
+					//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
+					fmt.Printf("Upload to target")
+					selector = int(RAM_PROGRAM_START - 0x50)
+					var p = make([]byte, 1)
+
+					// Send length to the bootloader
+					p[0] = length
+					_, err := port.Write(p[0:])
+					if err == nil {
+						for n := 0; n < int(length-1); n++ {
+							p[0] = RAM[selector]
+							time.Sleep(5 * time.Millisecond)
+							_, err := port.Write(p[0:])
+
+							if err != nil {
+								fmt.Println("Error writing byte to target.. ")
+							} else {
+								fmt.Printf(".")
+							}
+							selector++
+						}
+						fmt.Println(" DONE!")
+					}
+				}
+				// Applet is in the HC05, now we can interact with it
+				fmt.Println("     -- HC05 is in access mode, enter Q to exit and return --    ")
+				reader.Discard(1)
+				for {
+				Reloop:
+					fmt.Printf("Enter address to be read (in hexadecimal):")
+					keyinput, _ := reader.ReadString('\n')
+
+					if keyinput == "\r\n" {
+						goto Reloop
+					}
+
+					if strings.Contains(keyinput, "Q\r\n") {
+						fmt.Println("     -- HC05 access mode terminated --    ")
+						break
+					} else {
+						// We assume the value entered is valid, so we try and convert it to an integer
+
+						address, err := hex.DecodeString(keyinput[:4])
+						if err != nil {
+							fmt.Println(" Invalid user input- must be 4 hexadecimal digits (format: nnnn)")
+						} else {
+							// Transmit address bytes (16 bits)
+							addr_hi = address[0]
+							addr_lo = address[1]
+							fmt.Printf(" [DEBUG] Address bytes: %02X %02X\r\n", addr_hi, addr_lo)
+
+							// Clear receive buffer
+
+							for i := 0; i < 1024; i++ {
+								rxbuffer[i] = 0
+							}
+							rxbuffercount = 0
+
+							//Then, transmit address..
+							var p = make([]byte, 1)
+							p[0] = addr_hi
+							_, err := port.Write(p[0:])
+							if err != nil {
+								fmt.Println("Error Sending byte on serial port...(1) ")
+							}
+							time.Sleep(1 * time.Millisecond)
+							p[0] = addr_lo
+							_, err = port.Write(p[0:])
+							if err != nil {
+								fmt.Println("Error Sending byte on serial port...(2) ")
+							}
+							time.Sleep(100 * time.Millisecond)
+
+							// Get byte received
+							if rxbuffercount > 0 {
+								readbyte := rxbuffer[0]
+								fmt.Printf(" Value Read: %02X\r\n", readbyte)
+							} else {
+								fmt.Println(" Error reading memory")
+							}
+
+						}
+					}
+				}
+			}
+			fmt.Printf(">")
+			break
+
 		case "DUMP A\r\n":
 			//------------------------------------------------------------------
 			// DUMP command
