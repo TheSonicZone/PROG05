@@ -1,5 +1,6 @@
 # PROG05
 ## _A modern (21st century) programmer for the ancient Motorola MC68HC705C8_
+![HC05](hc705c8_orig.png)
 This application allows anyone to program, test, verify and run small applications on the 'C8' variant of the Motorola MC68HC705 series.
 ## Features
 
