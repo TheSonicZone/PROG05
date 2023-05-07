@@ -30,6 +30,9 @@ var port serial.Port
 
 const RAM_0050 = 1
 
+// Menu Selection constants
+const DUMP_BUFFER_REGION_A = 10
+
 // 68HC705C8 memory area images
 //------------------------------
 
@@ -45,30 +48,8 @@ var PROM_VECTORS = make([]byte, 12) // 1FF2 - 1FFF
 var RAM_SIZE_LOADED uint16 = 0
 var RAM_PROGRAM_START uint16 = 0
 
-// Test program to be written and run on the HC05 to confirm the board/CPU/serial connection/power is well
-// This is the object code compiled with CASM05Z and the S19 record converted directly to binary
-
-// This testprog flashed the LEDs nicely on PORT A
-//S1130051 A6 55 B7 00 A6 FF B7 04 A6 AA B7 00 CD 00 69 A6
-//S1130061 55 B7 00 CD 00 69 20 F0 A6 55 AE A6 5A 26 FD 4A
-//S1060071 26 F8 81
-
-//var testprog = []byte{0xA6, 0x55, 0xB7, 0x00, 0xA6, 0xFF, 0xB7, 0x04, 0xA6, 0xAA, 0xB7, 0x00, 0xCD, 0x00, 0x69, 0xA6,
-//	0x55, 0xB7, 0x00, 0xCD, 0x00, 0x69, 0x20, 0xF0, 0xA6, 0xFF, 0xAE, 0xA6, 0x5A, 0x26, 0xFD, 0x4A,
-//	0x26, 0xF8, 0x81}
-
-//A6 55 B7 00 A6 FF B7 04 AE 04 3F 0E A6 0C B7 0F
-//42 B7 0D A6 AA B7 00 CD 00 93 A6 55 B7 00 CD 00
-//93 A6 48 CD 00 8D A6 43 CD 00 8D A6 30 CD 00 8D
-//A6 35 CD 00 8D A6 0A CD 00 8D 20 D7 0F 10 FD B7
-//11 81 A6 FF AE A6 5A 26 FD 4A 26 F8 81
-
-var testprog = []byte{
-	0xA6, 0x55, 0xB7, 0x00, 0xA6, 0xFF, 0xB7, 0x04, 0xAE, 0x04, 0x3F, 0x0E, 0xA6, 0x0C, 0xB7, 0x0F,
-	0x42, 0xB7, 0x0D, 0xA6, 0xAA, 0xB7, 0x00, 0xCD, 0x00, 0x93, 0xA6, 0x55, 0xB7, 0x00, 0xCD, 0x00,
-	0x93, 0xA6, 0x48, 0xCD, 0x00, 0x8D, 0xA6, 0x43, 0xCD, 0x00, 0x8D, 0xA6, 0x30, 0xCD, 0x00, 0x8D,
-	0xA6, 0x35, 0xCD, 0x00, 0x8D, 0xA6, 0x0D, 0xCD, 0x00, 0x8D, 0x20, 0xD7, 0x0F, 0x10, 0xFD, 0xB7,
-	0x11, 0x81, 0xA6, 0xFF, 0xAE, 0xA6, 0x5A, 0x26, 0xFD, 0x4A, 0x26, 0xF8, 0x81}
+var userinput string
+var errtype error
 
 //-------------------------------------------------------------------------------------------------------------------
 // Utility Functions
@@ -120,6 +101,7 @@ func LoadSrec(path string, targetarea uint8, objectlength *uint16) int {
 	srec, err := os.Open(path)
 	if err != nil {
 		fmt.Println(" Error opening file! ")
+		return -1
 	}
 	defer srec.Close()
 	srecords := bufio.NewScanner(srec)
@@ -248,126 +230,239 @@ func main() {
 	// User Input Handling
 	//--------------------------------------------------------------------------------------
 	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf(">") // Print initial command prompt
 	for {
-		fmt.Printf("\r\n>") // Print initial command prompt
-		userinput, _ := reader.ReadString('\n')
-		//fmt.Println(userinput) // ONLY RETAINED FOR DEBUGGING, REMOVE IT
-		// User input obtained, process it
+	CmdInput:
 
-		// DUMP command
-		if strings.Contains(userinput, "DUMP A") {
-			fmt.Println("HEX Dump of RAM buffer ($005F - $00FF in the HC05 memory map)")
-			DumpMemory(RAM, len(RAM), 0x50)
-		}
+		userinput, errtype = reader.ReadString('\n')
 
-		// LOADRAM command
-		if strings.Contains(userinput, "LOADRAM") {
-			fmt.Printf(" Enter path and file name of S-record file: ")
-			path, _ := reader.ReadString('\n')
-			path = strings.Trim(path, "\n")
-			path = strings.Trim(path, "\r")
-
-			// Clear buffer prior to loading
-			for n := range RAM {
-				RAM[n] = 0
+		switch userinput {
+		case "DUMP A\r\n":
+			//------------------------------------------------------------------
+			// DUMP command
+			//-----------------------------------------------------------------
+			if strings.Contains(userinput, "DUMP A") {
+				fmt.Println("HEX Dump of RAM buffer ($005F - $00FF in the HC05 memory map)")
+				DumpMemory(RAM, len(RAM), 0x50)
 			}
+			fmt.Printf(">") // Print initial command prompt
+			break
 
-			LoadSrec(path, RAM_0050, &RAM_SIZE_LOADED)
-			fmt.Printf("S-Record loaded Successfully. %d bytes written to buffer\r\n", RAM_SIZE_LOADED)
-			fmt.Println("Please enable loader (9.4V on IRQ pin) and reset the MCU, then press ENTER when ready!")
-			anykey, _ := reader.ReadByte()
-			if anykey > 0 {
-				length = byte(RAM_SIZE_LOADED)
-				length++
-				//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
-				fmt.Printf("Upload to target")
-				selector = int(RAM_PROGRAM_START - 0x50)
-				var p = make([]byte, 1)
+		case "LOADRAM\r\n":
+			//------------------------------------------------------------------
+			// LOADRAM command
+			//------------------------------------------------------------------
+			if strings.Contains(userinput, "LOADRAM") {
+				fmt.Printf(" Enter path and file name of S-record file: ")
+				path, _ := reader.ReadString('\n')
+				path = strings.Trim(path, "\n")
+				path = strings.Trim(path, "\r")
 
-				// Send length to the bootloader
-				p[0] = length
-				_, err := port.Write(p[0:])
-				if err == nil {
-					for n := 0; n < int(length-1); n++ {
-						p[0] = RAM[selector]
-						time.Sleep(5 * time.Millisecond)
-						_, err := port.Write(p[0:])
-
-						if err != nil {
-							fmt.Println("Error writing byte to target.. ")
-						} else {
-							fmt.Printf(".")
-						}
-						selector++
-					}
-					fmt.Println(" DONE!")
-					fmt.Println(" Program Running!")
+				// Clear buffer prior to loading
+				for n := range RAM {
+					RAM[n] = 0
 				}
-			}
-		}
+				res := LoadSrec(path, RAM_0050, &RAM_SIZE_LOADED)
+				if res != 0 {
+					goto CmdInput
+				}
+				fmt.Printf("S-Record loaded Successfully. %d bytes written to buffer\r\n", RAM_SIZE_LOADED)
+				fmt.Println("Please enable loader either by: ")
+				fmt.Println("  * MC68HC05PGMR: S3-S5 = OFF, S6 = ON, shunt across Pin 1 & 2 of J1")
+				fmt.Println("  * MIDON PROG05: shunt across pins 1 & 2 of J1")
+				fmt.Println("Then, release reset by:")
+				fmt.Println("  * MC68HC05PGMR: switch S2 from RESET -> OUT")
+				fmt.Println("  * MIDON PROG05: Press and release SW1")
+				fmt.Println("  **** PRESS ENTER WHEN READY ***")
+				anykey, _ := reader.ReadByte()
+				if anykey > 0 {
+					length = byte(RAM_SIZE_LOADED)
+					length++
+					//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
+					fmt.Printf("Upload to target")
+					selector = int(RAM_PROGRAM_START - 0x50)
+					var p = make([]byte, 1)
 
-		// Quit command
-		//--------------
-		if strings.Contains(userinput, "QUIT") {
-			port.Close()
-			os.Exit(0)
-		}
-		// TEST command - Load small app into HC05 and process it's response
-		//-------------------------------------------------------------------
-		if strings.Contains(userinput, "TEST") {
-			// Stream binary executable out on the serial port
-			fmt.Printf("Loading test program into target RAM")
-			length = byte(len(testprog)) + 1
-			//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
-			selector = 0
-			var p = make([]byte, 1)
-
-			// Send length to the bootloader
-			p[0] = length
-			_, err := port.Write(p[0:])
-			if err == nil {
-				//fmt.Println("Length sent to bootloader...  ")
-
-				// Send all bytes out on the serial port now...
-				for n := 0; n < int(length-1); n++ {
-					p[0] = testprog[selector]
-					time.Sleep(5 * time.Millisecond)
+					// Send length to the bootloader
+					p[0] = length
 					_, err := port.Write(p[0:])
+					if err == nil {
+						for n := 0; n < int(length-1); n++ {
+							p[0] = RAM[selector]
+							time.Sleep(5 * time.Millisecond)
+							_, err := port.Write(p[0:])
 
-					if err != nil {
-						fmt.Println("Error writing byte to target.. ")
-					} else {
-						//fmt.Printf("%02X ", p[0:])
-						fmt.Printf(".")
+							if err != nil {
+								fmt.Println("Error writing byte to target.. ")
+							} else {
+								fmt.Printf(".")
+							}
+							selector++
+						}
+						fmt.Println(" DONE!")
+						fmt.Println(" Program Running!")
 					}
-					selector++
 				}
-				fmt.Println(" DONE!")
-				fmt.Printf("Checking target.... ")
-				// Clear buffer and pointer
+			}
+			fmt.Printf(">") // Print initial command prompt
+			break
+
+		case "QUIT\r\n":
+			//--------------
+			// Quit command
+			//--------------
+			if strings.Contains(userinput, "QUIT") {
+				port.Close()
+				fmt.Println("Program shutdown")
+				os.Exit(0)
+			}
+
+		case "DEMO\r\n":
+			//-------------------------------------------------------------------
+			// DEMO command - Load small app into HC05 to allow user to play with it
+			// Here we use a small applet loaded in from an s-record file
+			//-------------------------------------------------------------------
+			if strings.Contains(userinput, "DEMO") {
 				for i := 0; i < 1024; i++ {
 					rxbuffer[i] = 0
 				}
 				rxbuffercount = 0
-
-				// Allow time for the HC05 to have sent its string to the hos
-				time.Sleep(800 * time.Millisecond)
-				str1 := string(rxbuffer[:rxbuffercount])
-				if strings.Contains(str1, "HC05") {
-					fmt.Printf(" [OK]\r\n")
-					fmt.Println("Target (68HC705C8) access is Successful")
-				} else {
-					fmt.Printf(" [FAILED]\r\n")
-					fmt.Println("  Check your hardware, clock speed, and confirm HC05 did go into bootloader mode")
+				fmt.Println("Loading DEMO program compatible with MC68HC05PGMR and MIDON PROG05")
+				pwd, _ := os.Getwd()
+				res := LoadSrec(pwd+"/srec/hc05demo.s19", RAM_0050, &RAM_SIZE_LOADED)
+				if res != 0 {
+					goto CmdInput
 				}
+				fmt.Printf("S-Record loaded Successfully. %d bytes written to buffer\r\n", RAM_SIZE_LOADED)
+				fmt.Println("Please enable loader either by: ")
+				fmt.Println("  * MC68HC05PGMR: S3-S5 = OFF, S6 = ON, shunt across Pin 1 & 2 of J1")
+				fmt.Println("  * MIDON PROG05: shunt across pins 1 & 2 of J1")
+				fmt.Println("Then, release reset by:")
+				fmt.Println("  * MC68HC05PGMR: switch S2 from RESET -> OUT")
+				fmt.Println("  * MIDON PROG05: Press and release SW1")
+				fmt.Println("  **** PRESS ENTER WHEN READY ***")
+				anykey, _ := reader.ReadByte()
+				if anykey > 0 {
+					length = byte(RAM_SIZE_LOADED)
+					length++
+					//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
+					fmt.Printf("Upload to target")
+					selector = int(RAM_PROGRAM_START - 0x50)
+					var p = make([]byte, 1)
 
-			} else {
-				fmt.Println("\r\nError writing byte to target.. ")
+					// Send length to the bootloader
+					p[0] = length
+					_, err := port.Write(p[0:])
+					if err == nil {
+						for n := 0; n < int(length-1); n++ {
+							p[0] = RAM[selector]
+							time.Sleep(5 * time.Millisecond)
+							_, err := port.Write(p[0:])
+
+							if err != nil {
+								fmt.Println("Error writing byte to target.. ")
+							} else {
+								fmt.Printf(".")
+							}
+							selector++
+						}
+						fmt.Println(" DONE!")
+						fmt.Printf("Demo program should be running- Check PORT A pins for toggling")
+
+						// Clear buffer and pointer
+						for i := 0; i < 1024; i++ {
+							rxbuffer[i] = 0
+						}
+						rxbuffercount = 0
+
+					}
+				}
 			}
+			fmt.Printf(">") // Print initial command prompt
+			break
+
+		case "TEST\r\n":
+			//-------------------------------------------------------------------
+			// TEST command - Load small app into HC05 and process its response
+			// Here we use a small applet loaded in from an s-record file
+			//-------------------------------------------------------------------
+			if strings.Contains(userinput, "TEST") {
+				for i := 0; i < 1024; i++ {
+					rxbuffer[i] = 0
+				}
+				rxbuffercount = 0
+				fmt.Println("Loading test program compatible with MC68HC05PGMR and MIDON PROG05")
+				pwd, _ := os.Getwd()
+				res := LoadSrec(pwd+"/srec/hc05_gotest.s19", RAM_0050, &RAM_SIZE_LOADED)
+				if res != 0 {
+					goto CmdInput
+				}
+				fmt.Printf("S-Record loaded Successfully. %d bytes written to buffer\r\n", RAM_SIZE_LOADED)
+				fmt.Println("Please enable loader either by: ")
+				fmt.Println("  * MC68HC05PGMR: S3-S5 = OFF, S6 = ON, shunt across Pin 1 & 2 of J1")
+				fmt.Println("  * MIDON PROG05: shunt across pins 1 & 2 of J1")
+				fmt.Println("Then, release reset by:")
+				fmt.Println("  * MC68HC05PGMR: switch S2 from RESET -> OUT")
+				fmt.Println("  * MIDON PROG05: Press and release SW1")
+				fmt.Println("  **** PRESS ENTER WHEN READY ***")
+				anykey, _ := reader.ReadByte()
+				if anykey > 0 {
+					length = byte(RAM_SIZE_LOADED)
+					length++
+					//fmt.Printf("Length Indicator (1st byte) = %d\r\n", length)
+					fmt.Printf("Upload to target")
+					selector = int(RAM_PROGRAM_START - 0x50)
+					var p = make([]byte, 1)
+
+					// Send length to the bootloader
+					p[0] = length
+					_, err := port.Write(p[0:])
+					if err == nil {
+						for n := 0; n < int(length-1); n++ {
+							p[0] = RAM[selector]
+							time.Sleep(5 * time.Millisecond)
+							_, err := port.Write(p[0:])
+
+							if err != nil {
+								fmt.Println("Error writing byte to target.. ")
+							} else {
+								fmt.Printf(".")
+							}
+							selector++
+						}
+						fmt.Println(" DONE!")
+						fmt.Printf("Checking target.... ")
+						// Clear buffer and pointer
+						for i := 0; i < 1024; i++ {
+							rxbuffer[i] = 0
+						}
+						rxbuffercount = 0
+
+						// Allow time for the HC05 to have sent its string to the host
+						time.Sleep(800 * time.Millisecond)
+						str1 := string(rxbuffer[:rxbuffercount])
+						if strings.Contains(str1, "HC05") {
+							fmt.Printf(" [OK]\r\n")
+							fmt.Println("Target (68HC705C8) access is Successful")
+
+						} else {
+							fmt.Printf(" [FAILED]\r\n")
+							fmt.Println("  Check your hardware, clock speed, and confirm HC05 did go into bootloader mode")
+						}
+						// Clear buffer and pointer
+						for i := 0; i < 1024; i++ {
+							rxbuffer[i] = 0
+						}
+						rxbuffercount = 0
+
+					}
+				}
+			}
+			fmt.Printf(">") // Print initial command prompt
+			break
 		}
 
 	}
-
 }
 
 // Serial Port Reception goroutine
