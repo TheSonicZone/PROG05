@@ -18,6 +18,26 @@ PROG05 is developed using JetBrains GoLand with the latest Go runtime installed.
 
 It is built by simply using ```go build main.go``` on the command line in the root directory of the project.
 
+## How it works
+This software works by using a specific feature of the HC05 microcontroller. 
+Every HC05 MCU had a factory programmed bootloader that is invoked by applying 9.4V on the IRQ pin*, 
+applying appropriate logic levels on port pins PD5 thru PD2, and asserting RESET. 
+If these conditions are present, when the HC05 comes out of reset it will begin execution of the
+said bootloader. One of the modes of this bootloader is the ability to load small programs into RAM via the SCI module
+and execute them.
+
+I use this feature to perform every available function in this application. So for example, to read a memory location
+in the HC05 address space, a small app is loaded into RAM, executed, and this application then interacts with this app
+to perform the read by supplying the 16-bit address and then receiving the byte read, all via the serial port.
+(any decent USB-to-serial converter)
+
+All the 'applets' are written in assembly language and assembled with CASM05Z. The resultant S-record files are located
+in the ```srec``` directory
+
+* Actually never described in any of the documentation. I figured it out eventually because I remembered the HC908 series 
+requires 7.2V to invoke the Monitor ROM and Motorola re-used a lot of concepts.
+
+
 ## Dependencies
 
 PROG05 uses the following libraries which need to be installed using ``go get``, either manually or via the IDE
