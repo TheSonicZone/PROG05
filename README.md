@@ -20,8 +20,10 @@ It is built by simply using ```go build main.go``` on the command line in the ro
 
 ## How it works
 This software works by using a specific feature of the HC05 microcontroller. 
-Every HC05 MCU had a factory programmed bootloader that is invoked by applying 9.4V on the IRQ pin*, 
-applying appropriate logic levels on port pins PD5 thru PD2, and asserting RESET. 
+Every HC05 MCU contains a factory programmed bootloader that is invoked by:
+- Applying 9.4V on the IRQ pin[^1] 
+- Applying appropriate logic levels on port pins PD5 thru PD2
+- Asserting RESET. 
 If these conditions are present, when the HC05 comes out of reset it will begin execution of the
 said bootloader. One of the modes of this bootloader is the ability to load small programs into RAM via the SCI module
 and execute them.
@@ -34,7 +36,7 @@ to perform the read by supplying the 16-bit address and then receiving the byte 
 All the 'applets' are written in assembly language and assembled with CASM05Z. The resultant S-record files are located
 in the ```srec``` directory
 
-* Actually never described in any of the documentation. I figured it out eventually because I remembered the HC908 series 
+[^1]: Actually this was never described in any of the documentation. I figured it out eventually because I remembered the HC908 series 
 requires 7.2V to invoke the Monitor ROM and Motorola re-used a lot of concepts.
 
 
